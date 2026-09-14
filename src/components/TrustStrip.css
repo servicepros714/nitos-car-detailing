@@ -1,0 +1,24 @@
+.trust {
+  background: var(--graphite);
+  border-bottom: 1px solid var(--line);
+}
+.trust__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px 24px;
+  padding: 22px 24px;
+}
+.trust__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--chrome-200);
+  font-size: 13px;
+  font-family: var(--font-accent);
+  font-weight: 600;
+}
+.trust__item svg { color: var(--racing-red); flex-shrink: 0; }
+
+@media (min-width: 780px) {
+  .trust__grid { grid-template-columns: repeat(4, 1fr); }
+}

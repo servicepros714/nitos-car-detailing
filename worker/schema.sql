@@ -1,0 +1,25 @@
+-- Shared detailing-bookings D1 database (account: austin80565)
+-- Safe to run against the existing shared DB — uses IF NOT EXISTS only.
+CREATE TABLE IF NOT EXISTS bookings (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL,
+  time TEXT NOT NULL,
+  service TEXT NOT NULL,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  email TEXT NOT NULL,
+  vehicle TEXT,
+  address TEXT NOT NULL,
+  notes TEXT,
+  source TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  status TEXT DEFAULT 'Pending',
+  reschedule_date TEXT,
+  reschedule_time TEXT,
+  notes2 TEXT,
+  original_date TEXT,
+  original_time TEXT,
+  payment_status TEXT DEFAULT 'Pay Later'
+);
+
+CREATE INDEX IF NOT EXISTS idx_bookings_source_date ON bookings (source, date);

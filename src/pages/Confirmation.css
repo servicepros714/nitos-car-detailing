@@ -1,0 +1,48 @@
+.confirmation {
+  max-width: 640px;
+  padding: 72px 24px 80px;
+  text-align: center;
+}
+.confirmation__icon { color: var(--racing-red); margin-bottom: 14px; }
+.confirmation h1 { font-size: clamp(26px, 4vw, 34px); margin: 8px 0 6px; }
+.confirmation__ref {
+  font-family: var(--font-accent);
+  font-weight: 600;
+  color: var(--steel-600);
+  margin-bottom: 32px;
+}
+
+.confirmation__card {
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--chrome-200);
+  border-radius: 4px;
+  padding: 24px;
+  margin-bottom: 28px;
+}
+.confirmation__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+.confirmation__row svg { color: var(--racing-red); flex-shrink: 0; }
+
+.confirmation__services {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--chrome-200);
+}
+.confirmation__line { display: flex; justify-content: space-between; font-size: 14px; padding: 6px 0; }
+.confirmation__line--total {
+  font-family: var(--font-accent);
+  font-weight: 700;
+  font-size: 18px;
+  border-top: 1px solid var(--chrome-200);
+  margin-top: 6px;
+  padding-top: 12px;
+}
+
+.confirmation__note { font-size: 14px; color: var(--steel-600); margin-bottom: 28px; }
+.confirmation__note a { color: var(--racing-red); font-weight: 600; }

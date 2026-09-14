@@ -1,0 +1,85 @@
+.services__title {
+  font-size: clamp(26px, 4vw, 38px);
+  max-width: 18ch;
+  margin: 10px 0 40px;
+  color: var(--ink-navy-deep);
+}
+
+.services__grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1fr;
+}
+
+.spec-plate {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--chrome-200);
+  padding: 30px 26px;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%);
+}
+.spec-plate--featured {
+  background: var(--ink-navy);
+  border-color: var(--ink-navy);
+  color: var(--chrome-100);
+}
+.spec-plate__tag {
+  position: absolute;
+  top: 18px; right: -34px;
+  transform: rotate(45deg);
+  background: var(--racing-red);
+  color: #fff;
+  font-family: var(--font-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 4px 40px;
+}
+.spec-plate__name { font-size: 24px; margin-bottom: 6px; }
+.spec-plate--featured .spec-plate__name { color: var(--chrome-100); }
+.spec-plate__blurb {
+  font-size: 14px;
+  color: var(--steel-600);
+  margin-bottom: 18px;
+}
+.spec-plate--featured .spec-plate__blurb { color: var(--chrome-300); }
+
+.spec-plate__price {
+  font-family: var(--font-accent);
+  font-weight: 700;
+  font-size: 32px;
+  color: var(--racing-red);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.spec-plate__addon { font-size: 13px; color: var(--steel-600); }
+
+.spec-plate__list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.spec-plate__list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--ink-navy-deep);
+}
+.spec-plate--featured .spec-plate__list li { color: var(--chrome-200); }
+.spec-plate__list li svg { color: var(--racing-red); margin-top: 3px; flex-shrink: 0; }
+
+.services__cta {
+  display: flex;
+  justify-content: center;
+  margin-top: 36px;
+}
+
+@media (min-width: 780px) {
+  .services__grid { grid-template-columns: repeat(3, 1fr); }
+}

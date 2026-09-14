@@ -1,0 +1,71 @@
+.addon-step__title {
+  font-size: 26px;
+  margin: 10px 0 8px;
+  text-align: center;
+}
+.addon-step__subtitle {
+  color: var(--steel-600);
+  font-size: 14px;
+  margin: 0 auto 24px;
+  max-width: 52ch;
+  text-align: center;
+}
+
+.addon-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+  background: #fff;
+  border: 2px solid var(--chrome-200);
+  border-radius: 4px;
+  padding: 18px 20px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.addon-card--selected {
+  border-color: var(--racing-red);
+  box-shadow: 0 0 0 1px var(--racing-red);
+}
+
+.addon-card__box {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: var(--chrome-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.addon-card--selected .addon-card__box {
+  background: var(--racing-red);
+}
+
+.addon-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.addon-card__name {
+  font-family: var(--font-display);
+  font-size: 17px;
+  color: var(--ink-navy-deep);
+}
+.addon-card__desc {
+  font-size: 13px;
+  color: var(--steel-600);
+}
+
+.addon-card__price {
+  font-family: var(--font-accent);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--racing-red);
+  flex-shrink: 0;
+}

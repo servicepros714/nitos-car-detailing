@@ -1,0 +1,15 @@
+@import './theme.css';
+
+img { max-width: 100%; display: block; }
+
+.mobile-bar-spacer { display: none; }
+@media (max-width: 900px) {
+  .mobile-bar-spacer { display: block; height: 74px; }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+}

@@ -1,0 +1,10 @@
+# Force binary handling so Git/Windows never rewrites line endings in these
+# files — a common cause of images looking "corrupted" after a commit/push.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
