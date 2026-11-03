@@ -32,6 +32,16 @@ const PACKAGES = {
 const EXTERIOR = { name: 'Exterior Wash', price: 50 };
 const COUPONS = { PREPAY: 15 };
 
+// PaymentIntent statuses that count as paid. Same list as the checkout page.
+const PAID_STATUSES = ['succeeded', 'processing', 'requires_capture'];
+
+// What each service costs, by the exact label the site sends
+const SERVICE_PRICES = new Map();
+for (const pkg of Object.values(PACKAGES)) {
+  SERVICE_PRICES.set(pkg.name, pkg.price);
+  SERVICE_PRICES.set(`${pkg.name} + ${EXTERIOR.name}`, pkg.price + EXTERIOR.price);
+}
+
 // Every 30 minutes, 8:00 AM – 5:30 PM. Keep in sync with generateTimeSlots in src/lib/bookingDb.js
 const VALID_TIMES = [];
 for (let t = 8 * 60; t <= 17 * 60 + 30; t += 30) {
@@ -135,7 +145,6 @@ const TAKEN_SQL = `
 async function notifyGHL(env, booking) {
   if (!env.GHL_WEBHOOK_URL) return;
   const [first_name, ...rest] = booking.name.split(/\s+/);
-  const totalMatch = /Total:\s*\$?(\d+(?:\.\d+)?)/.exec(booking.notes || '');
   // Same shape as the other portfolio sites so one GHL workflow can serve them all
   const payload = {
     id: booking.id,
@@ -151,7 +160,7 @@ async function notifyGHL(env, booking) {
     address: booking.address,
     notes: booking.notes,
     payment_status: booking.payment_status, // "Paid" | "Pay Later"
-    total: totalMatch ? Number(totalMatch[1]) : null,
+    total: booking.total,
     event_type: 'booking_confirmed',
     // extras (harmless if unmapped)
     first_name,
@@ -171,6 +180,39 @@ async function notifyGHL(env, booking) {
   } catch (err) {
     console.error('GHL webhook error', err?.message || err);
   }
+}
+
+/**
+ * Decide a booking's payment status from Stripe itself: the browser saying "Paid" is never trusted.
+ * Anything unproven is saved as Pay Later. A PaymentIntent that may still be real stays linked,
+ * so the webhook can upgrade the booking if it did succeed (e.g. Stripe was unreachable here).
+ */
+async function verifyPayment(env, booking) {
+  const unproven = (linked) => ({
+    payment_status: 'Pay Later',
+    payment_intent_id: linked ? booking.payment_intent_id : null
+  });
+  if (!booking.payment_intent_id) return unproven(false);
+
+  let pi;
+  try {
+    const res = await fetch(`https://api.stripe.com/v1/payment_intents/${booking.payment_intent_id}`, {
+      headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` }
+    });
+    if (res.status === 404) return unproven(false);
+    if (!res.ok) throw new Error(`Stripe responded ${res.status}`);
+    pi = await res.json();
+  } catch (err) {
+    console.error('could not verify payment', booking.payment_intent_id, err?.message || err);
+    return unproven(true);
+  }
+
+  if (pi.metadata?.source !== SOURCE || pi.metadata?.service !== booking.service) {
+    console.warn('payment does not match booking', booking.payment_intent_id);
+    return unproven(false);
+  }
+  if (!PAID_STATUSES.includes(pi.status)) return unproven(true);
+  return { payment_status: 'Paid', payment_intent_id: pi.id, total: pi.amount / 100 };
 }
 
 /**
@@ -247,10 +289,23 @@ export default {
         if (missing.length) return json(env, { error: `Missing: ${missing.join(', ')}` }, 400);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(booking.date)) return json(env, { error: 'Invalid date' }, 400);
         if (!VALID_TIMES.includes(booking.time)) return json(env, { error: 'Invalid time' }, 400);
+        if (!SERVICE_PRICES.has(booking.service)) return json(env, { error: 'Unknown service' }, 400);
 
         const taken = await env.DB.prepare(TAKEN_SQL).bind(SOURCE, booking.date).all();
         if (taken.results.some((r) => r.t === booking.time)) {
           return json(env, { error: 'That time was just booked — please pick another slot.' }, 409);
+        }
+
+        // The total is never taken from the browser: list price, or what Stripe actually charged
+        booking.total = SERVICE_PRICES.get(booking.service);
+        if (booking.payment_status === 'Paid') Object.assign(booking, await verifyPayment(env, booking));
+        else booking.payment_intent_id = null;
+        booking.notes = [`Total: $${booking.total}`, booking.notes.replace(/^Total:\s*\$?\d+(?:\.\d+)?\s*(?:·\s*)?/, '')].filter(Boolean).join(' · ');
+
+        // One payment can only ever back one booking
+        if (booking.payment_intent_id) {
+          const used = await env.DB.prepare('SELECT id FROM bookings WHERE payment_intent_id = ?').bind(booking.payment_intent_id).first();
+          if (used) return json(env, { error: 'That payment was already used for a booking.' }, 409);
         }
 
         const id = makeId();

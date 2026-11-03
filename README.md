@@ -93,6 +93,10 @@ Service → Exterior Wash add-on → Date → Time → Your info → Checkout (o
 
 The booking is saved when the customer pays or picks Pay Later, not before, so abandoned checkouts don't hold a slot and GoHighLevel gets the real payment status. Price, coupon and Stripe ID are written to `notes`, and the PaymentIntent ID to `payment_intent_id`.
 
+The Worker only saves a booking as `Paid` after confirming with Stripe that the PaymentIntent went through, belongs to this site and matches the booked service. Anything else is saved as `Pay Later`. If Stripe can't be reached, the PaymentIntent stays linked so the webhook can still mark it `Paid`.
+
+The total in `notes` and in the GoHighLevel payload is set by the Worker, never the browser: what Stripe charged for a `Paid` booking, otherwise the list price. Services it doesn't recognize are rejected.
+
 ## Checkout payment methods
 
 - PaymentIntents are created with `payment_method_types` = `card` + `link` only, so Cash App, Klarna and Affirm never appear. Apple Pay runs on `card`.
