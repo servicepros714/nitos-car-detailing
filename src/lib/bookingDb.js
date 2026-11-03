@@ -1,6 +1,11 @@
 // Worker API calls — production pattern (Montek/Fox/Luna/Sonrisa/Nitos).
 const API_URL = import.meta.env.VITE_API_URL;
 
+async function readError(res, fallback) {
+  const data = await res.json().catch(() => ({}));
+  return new Error(data.error || fallback);
+}
+
 export async function fetchBookedSlots(date) {
   const res = await fetch(`${API_URL}/api/slots?date=${date}`);
   if (!res.ok) throw new Error('Could not load availability');
@@ -14,27 +19,18 @@ export async function createBooking(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
-  if (!res.ok) throw new Error('Could not save booking');
+  if (!res.ok) throw await readError(res, 'Could not save booking');
   return res.json();
 }
 
-export async function updatePaymentStatus(bookingId, payment_status) {
-  const res = await fetch(`${API_URL}/api/bookings/${bookingId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ payment_status })
-  });
-  if (!res.ok) throw new Error('Could not update payment status');
-  return res.json();
-}
-
-export async function createPaymentIntent(amount, email) {
+// The Worker computes the price from package + add-on + coupon.
+export async function createPaymentIntent({ pkg, exterior, coupon, name, email, phone }) {
   const res = await fetch(`${API_URL}/api/create-payment-intent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amount, email })
+    body: JSON.stringify({ package: pkg, exterior, coupon, name, email, phone })
   });
-  if (!res.ok) throw new Error('Could not start payment');
+  if (!res.ok) throw await readError(res, 'Could not start payment');
   return res.json();
 }
 

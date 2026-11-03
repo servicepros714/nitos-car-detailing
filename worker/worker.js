@@ -1,150 +1,396 @@
-// Nitos Car Detailing Rossmoor — Worker API
-// Deploy manually via the Cloudflare dashboard (account: austin80565).
-// Bind D1 database "detailing-bookings" as env.DB.
-// Set STRIPE_SECRET_KEY as a Worker secret via the dashboard.
+/**
+ * Nitos Car Detailing Rossmoor — Cloudflare Worker
+ * Worker name:  nitos-rossmoor-detailing-worker
+ * Source tag:   nitos-rossmoor    Booking ID prefix: NIT-
+ *
+ * Deploy: npx wrangler deploy --config worker/wrangler.toml (D1 binding + ALLOWED_ORIGIN are preconfigured)
+ * Secrets, set via: npx wrangler secret put <NAME> --config worker/wrangler.toml
+ *   STRIPE_SECRET_KEY     — sk_live_... / sk_test_...
+ *   STRIPE_WEBHOOK_SECRET — whsec_... signing secret of the Stripe webhook endpoint pointing at
+ *                           /api/stripe-webhook (events: payment_intent.succeeded, payment_intent.payment_failed, charge.refunded)
+ *   GHL_WEBHOOK_URL       — (optional) GoHighLevel Workflow "Inbound Webhook" URL. Every new booking is POSTed
+ *                           there as JSON (see notifyGHL below) so a GHL workflow can create the contact + send email/SMS.
+ *   ADMIN_TOKEN           — (optional) if set, GET/PATCH /api/bookings require "Authorization: Bearer <token>"
+ *
+ * Routes
+ *   GET   /api/slots?date=YYYY-MM-DD         → { booked: ["9:00 AM", ...] }   (source-scoped)
+ *   POST  /api/bookings                      → { id }
+ *   GET   /api/bookings?date=YYYY-MM-DD      → { bookings: [...] }             (source-scoped)
+ *   PATCH /api/bookings/:id                  → { ok: true }
+ *   POST  /api/create-payment-intent         → { clientSecret, amount }         (does NOT need D1)
+ *   POST  /api/stripe-webhook                → { received: true }               (Stripe → Worker, signature-verified)
+ */
 
 const SOURCE = 'nitos-rossmoor';
-const PREFIX = 'NIT-';
+const ID_PREFIX = 'NIT-';
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type'
+// Server-side price table — the browser never decides the amount. Keep in sync with SERVICES in src/lib/BookingContext.jsx
+const PACKAGES = {
+  basic: { name: 'Basic Interior Detail', price: 150 },
+  premium: { name: 'Premium Interior Detail', price: 200 }
 };
+const EXTERIOR = { name: 'Exterior Wash', price: 50 };
+const COUPONS = { PREPAY: 15 };
 
-function json(data, status = 200) {
+// Every 30 minutes, 8:00 AM – 5:30 PM. Keep in sync with generateTimeSlots in src/lib/bookingDb.js
+const VALID_TIMES = [];
+for (let t = 8 * 60; t <= 17 * 60 + 30; t += 30) {
+  const h = Math.floor(t / 60);
+  const m = t % 60;
+  VALID_TIMES.push(`${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`);
+}
+
+// Admin-dashboard compatibility: fields every Worker in the portfolio must accept on PATCH
+const PATCHABLE = ['reschedule_date', 'reschedule_time', 'original_date', 'original_time', 'notes2', 'status', 'payment_status'];
+
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS bookings (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    time TEXT NOT NULL,
+    service TEXT,
+    name TEXT,
+    phone TEXT,
+    email TEXT,
+    vehicle TEXT,
+    address TEXT,
+    notes TEXT,
+    source TEXT,
+    created_at TEXT,
+    status TEXT DEFAULT 'Pending',
+    reschedule_date TEXT,
+    reschedule_time TEXT,
+    notes2 TEXT,
+    original_date TEXT,
+    original_time TEXT,
+    payment_status TEXT,
+    payment_intent_id TEXT
+  )
+`;
+const INDEX = `CREATE INDEX IF NOT EXISTS idx_bookings_source_date ON bookings (source, date)`;
+
+let schemaReady = false;
+async function ensureSchema(db) {
+  if (schemaReady) return;
+  // D1 .exec() splits on newlines — flatten first to avoid "incomplete input"
+  await db.exec(SCHEMA.replace(/\s+/g, ' ').trim());
+  await db.exec(INDEX.replace(/\s+/g, ' ').trim());
+  schemaReady = true;
+}
+
+// ALLOWED_ORIGIN may be a comma-separated list; the matching request Origin is echoed back.
+// Unset or "*" allows everything. A non-matching origin gets the first listed one (so the browser blocks it).
+function corsHeaders(env) {
+  const list = String(env.ALLOWED_ORIGIN || '*').split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean);
+  const origin = env.REQUEST_ORIGIN || '';
+  const allow = list.includes('*') ? '*' : list.includes(origin) ? origin : list[0];
+  return {
+    'Access-Control-Allow-Origin': allow,
+    Vary: 'Origin',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400'
+  };
+}
+
+function json(env, data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(env) }
   });
 }
 
-const PATCHABLE = new Set([
-  'status',
-  'reschedule_date',
-  'reschedule_time',
-  'original_date',
-  'original_time',
-  'notes2',
-  'payment_status'
-]);
+const clean = (v, max = 300) => String(v ?? '').trim().slice(0, max);
 
-function newBookingId() {
-  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `${PREFIX}${Date.now().toString().slice(-6)}${rand}`;
+function normalizePayment(v) {
+  const s = String(v || '').toLowerCase().replace(/[\s_-]/g, '');
+  return s === 'paid' ? 'Paid' : 'Pay Later';
 }
 
-async function stripeRequest(env, path, body) {
-  const form = new URLSearchParams();
-  for (const [k, v] of Object.entries(body)) {
-    if (v !== undefined && v !== null) form.append(k, v);
+function makeId() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return ID_PREFIX + Array.from(bytes, (b) => chars[b % chars.length]).join('');
+}
+
+function isAuthorized(request, env) {
+  if (!env.ADMIN_TOKEN) return true;
+  return request.headers.get('Authorization') === `Bearer ${env.ADMIN_TOKEN}`;
+}
+
+// Slot taken = active booking at that (possibly rescheduled) date/time for THIS site only
+const TAKEN_SQL = `
+  SELECT COALESCE(NULLIF(reschedule_time, ''), time) AS t
+  FROM bookings
+  WHERE source = ?
+    AND COALESCE(NULLIF(reschedule_date, ''), date) = ?
+    AND (status IS NULL OR status NOT IN ('Cancelled', 'Canceled'))
+`.replace(/\s+/g, ' ').trim();
+
+/**
+ * Fire-and-forget POST of a new booking to a GoHighLevel Inbound Webhook.
+ * Never throws — a GHL outage must not break the customer's booking.
+ * Field names are flat and snake_case so they map cleanly in the GHL workflow builder.
+ */
+async function notifyGHL(env, booking) {
+  if (!env.GHL_WEBHOOK_URL) return;
+  const [first_name, ...rest] = booking.name.split(/\s+/);
+  const totalMatch = /Total:\s*\$?(\d+(?:\.\d+)?)/.exec(booking.notes || '');
+  // Same shape as the other portfolio sites so one GHL workflow can serve them all
+  const payload = {
+    id: booking.id,
+    name: booking.name,
+    phone: booking.phone,
+    email: booking.email,
+    service: booking.service,
+    date: booking.date, // YYYY-MM-DD
+    time: booking.time, // e.g. "6:30 PM"
+    source: SOURCE,
+    source_label: 'Nitos Car Detailing',
+    vehicle: booking.vehicle,
+    address: booking.address,
+    notes: booking.notes,
+    payment_status: booking.payment_status, // "Paid" | "Pay Later"
+    total: totalMatch ? Number(totalMatch[1]) : null,
+    event_type: 'booking_confirmed',
+    // extras (harmless if unmapped)
+    first_name,
+    last_name: rest.join(' '),
+    booking_id: booking.id,
+    status: 'Pending',
+    created_at: booking.created_at,
+    business_phone: '(562) 539-2226'
+  };
+  try {
+    const res = await fetch(env.GHL_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) console.error('GHL webhook failed', res.status, await res.text().catch(() => ''));
+  } catch (err) {
+    console.error('GHL webhook error', err?.message || err);
   }
-  const res = await fetch(`https://api.stripe.com/v1/${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: form
+}
+
+/**
+ * Verify a Stripe-Signature header ("t=...,v1=...,v1=...") against the raw body.
+ * HMAC-SHA256 of `${t}.${body}` keyed with the whsec_ secret; 5-minute replay window.
+ */
+async function verifyStripeSignature(raw, header, secret, toleranceSec = 300) {
+  if (!header) return false;
+  const parts = header.split(',').map((p) => p.split('='));
+  const t = parts.find(([k]) => k === 't')?.[1];
+  const sigs = parts.filter(([k]) => k === 'v1').map(([, v]) => v);
+  if (!t || !sigs.length) return false;
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSec) return false;
+
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(`${t}.${raw}`)));
+  const expected = Array.from(mac, (b) => b.toString(16).padStart(2, '0')).join('');
+
+  // Constant-time compare against each provided v1 signature
+  return sigs.some((s) => {
+    if (s.length !== expected.length) return false;
+    let diff = 0;
+    for (let i = 0; i < s.length; i++) diff |= s.charCodeAt(i) ^ expected.charCodeAt(i);
+    return diff === 0;
   });
-  return res.json();
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, baseEnv, ctx) {
+    // Request-scoped view of env so CORS can see this request's Origin without touching the shared bindings object
+    const env = Object.assign(Object.create(baseEnv), { REQUEST_ORIGIN: request.headers.get('Origin') || '' });
     const url = new URL(request.url);
-    const { pathname } = url;
+    const path = url.pathname.replace(/\/+$/, '');
+    const method = request.method;
 
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS_HEADERS });
-    }
+    if (method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(env) });
+
+    // Payment never touches D1, so Stripe can be tested before the DB binding exists
+    const needsDb = path !== '/api/create-payment-intent';
 
     try {
-      // GET /api/slots?date=YYYY-MM-DD  → booked times for that date (source-scoped)
-      if (pathname === '/api/slots' && request.method === 'GET') {
-        const date = url.searchParams.get('date');
-        if (!date) return json({ error: 'date is required' }, 400);
-        const { results } = await env.DB.prepare(
-          `SELECT time FROM bookings WHERE source = ? AND date = ? AND status != 'Cancelled'`
-        )
-          .bind(SOURCE, date)
-          .all();
-        return json({ booked: results.map((r) => r.time) });
+      if (needsDb && path.startsWith('/api/')) {
+        if (!env.DB) return json(env, { error: 'Database not configured yet for this Worker.' }, 503);
+        await ensureSchema(env.DB);
       }
 
-      // POST /api/create-payment-intent  { amount, email }
-      if (pathname === '/api/create-payment-intent' && request.method === 'POST') {
-        const { amount, email } = await request.json();
-        if (!amount) return json({ error: 'amount is required' }, 400);
-        const intent = await stripeRequest(env, 'payment_intents', {
-          amount: Math.round(amount * 100),
-          currency: 'usd',
-          receipt_email: email,
-          'automatic_payment_methods[enabled]': 'true'
-        });
-        if (intent.error) return json({ error: intent.error.message }, 400);
-        return json({ clientSecret: intent.client_secret });
+      /* ---------- availability ---------- */
+      if (path === '/api/slots' && method === 'GET') {
+        const date = clean(url.searchParams.get('date'), 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(env, { error: 'Invalid date' }, 400);
+        const { results } = await env.DB.prepare(TAKEN_SQL).bind(SOURCE, date).all();
+        return json(env, { booked: results.map((r) => r.t) });
       }
 
-      // POST /api/bookings  → create a booking (source-scoped, prefixed id)
-      if (pathname === '/api/bookings' && request.method === 'POST') {
-        const b = await request.json();
-        const id = newBookingId();
+      /* ---------- create booking ---------- */
+      if (path === '/api/bookings' && method === 'POST') {
+        const b = await request.json().catch(() => ({}));
+        const booking = {
+          date: clean(b.date, 10),
+          time: clean(b.time, 10),
+          service: clean(b.service, 120),
+          name: clean(b.name, 120),
+          phone: clean(b.phone, 40),
+          email: clean(b.email, 160),
+          vehicle: clean(b.vehicle, 160),
+          address: clean(b.address, 300),
+          notes: clean(b.notes, 500),
+          payment_status: normalizePayment(b.payment_status),
+          // Links the booking to its Stripe PaymentIntent so the webhook can find it later
+          payment_intent_id: /^pi_[A-Za-z0-9]{10,64}$/.test(String(b.payment_intent_id || '')) ? b.payment_intent_id : null
+        };
+        const missing = ['date', 'time', 'service', 'name', 'phone', 'email', 'address'].filter((k) => !booking[k]);
+        if (missing.length) return json(env, { error: `Missing: ${missing.join(', ')}` }, 400);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(booking.date)) return json(env, { error: 'Invalid date' }, 400);
+        if (!VALID_TIMES.includes(booking.time)) return json(env, { error: 'Invalid time' }, 400);
+
+        const taken = await env.DB.prepare(TAKEN_SQL).bind(SOURCE, booking.date).all();
+        if (taken.results.some((r) => r.t === booking.time)) {
+          return json(env, { error: 'That time was just booked — please pick another slot.' }, 409);
+        }
+
+        const id = makeId();
         const created_at = new Date().toISOString();
         await env.DB.prepare(
-          `INSERT INTO bookings
-            (id, date, time, service, name, phone, email, vehicle, address, notes, source, created_at, status, payment_status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?)`
-        )
-          .bind(
-            id,
-            b.date,
-            b.time,
-            b.service,
-            b.name,
-            b.phone,
-            b.email,
-            b.vehicle || '',
-            b.address,
-            b.notes || '',
-            SOURCE,
-            created_at,
-            b.payment_status || 'Pay Later'
-          )
-          .run();
-        return json({ id, created_at });
+          `INSERT INTO bookings (id, date, time, service, name, phone, email, vehicle, address, notes, source, created_at, status, reschedule_date, reschedule_time, notes2, original_date, original_time, payment_status, payment_intent_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NULL, NULL, NULL, NULL, NULL, ?, ?)`.replace(/\s+/g, ' ')
+        ).bind(
+          id, booking.date, booking.time, booking.service, booking.name, booking.phone, booking.email,
+          booking.vehicle, booking.address, booking.notes, SOURCE, created_at, booking.payment_status,
+          booking.payment_intent_id
+        ).run();
+
+        // Notify GoHighLevel after the response is sent (does not delay or block the customer)
+        ctx.waitUntil(notifyGHL(env, { ...booking, id, created_at }));
+
+        return json(env, { id }, 201);
       }
 
-      // GET /api/bookings  → source-scoped list (used by shared admin dashboard)
-      if (pathname === '/api/bookings' && request.method === 'GET') {
-        const { results } = await env.DB.prepare(
-          `SELECT * FROM bookings WHERE source = ? ORDER BY date DESC, time DESC`
-        )
-          .bind(SOURCE)
-          .all();
-        return json({ bookings: results });
+      /* ---------- list bookings (admin) ---------- */
+      if (path === '/api/bookings' && method === 'GET') {
+        if (!isAuthorized(request, env)) return json(env, { error: 'Unauthorized' }, 401);
+        const date = url.searchParams.get('date');
+        const stmt = date
+          ? env.DB.prepare('SELECT * FROM bookings WHERE source = ? AND date = ? ORDER BY date, time').bind(SOURCE, clean(date, 10))
+          : env.DB.prepare('SELECT * FROM bookings WHERE source = ? ORDER BY date DESC, time LIMIT 500').bind(SOURCE);
+        const { results } = await stmt.all();
+        return json(env, { bookings: results });
       }
 
-      // PATCH /api/bookings/:id → admin dashboard status/reschedule updates
-      const patchMatch = pathname.match(/^\/api\/bookings\/([^/]+)$/);
-      if (patchMatch && request.method === 'PATCH') {
-        const id = patchMatch[1];
-        const updates = await request.json();
-        const fields = Object.keys(updates).filter((k) => PATCHABLE.has(k));
-        if (!fields.length) return json({ error: 'no valid fields' }, 400);
-        const setClause = fields.map((f) => `${f} = ?`).join(', ');
-        const values = fields.map((f) => updates[f]);
-        await env.DB.prepare(
-          `UPDATE bookings SET ${setClause} WHERE id = ? AND source = ?`
-        )
-          .bind(...values, id, SOURCE)
-          .run();
-        return json({ ok: true });
+      /* ---------- update booking (admin) ---------- */
+      const m = path.match(/^\/api\/bookings\/([A-Za-z0-9-]+)$/);
+      if (m && method === 'PATCH') {
+        if (!isAuthorized(request, env)) return json(env, { error: 'Unauthorized' }, 401);
+        const body = await request.json().catch(() => ({}));
+        const fields = PATCHABLE.filter((k) => k in body);
+        if (!fields.length) return json(env, { error: 'Nothing to update' }, 400);
+        const values = fields.map((k) => (k === 'payment_status' ? normalizePayment(body[k]) : body[k] === null ? null : clean(body[k], 500)));
+        const sets = fields.map((k) => `${k} = ?`).join(', ');
+        const res = await env.DB.prepare(`UPDATE bookings SET ${sets} WHERE id = ? AND source = ?`).bind(...values, m[1], SOURCE).run();
+        if (!res.meta || res.meta.changes === 0) return json(env, { error: 'Booking not found' }, 404);
+        return json(env, { ok: true });
       }
 
-      return json({ error: 'not found' }, 404);
+      /* ---------- Stripe PaymentIntent ---------- */
+      if (path === '/api/create-payment-intent' && method === 'POST') {
+        if (!env.STRIPE_SECRET_KEY) return json(env, { error: 'Stripe is not configured' }, 503);
+        const b = await request.json().catch(() => ({}));
+        const pkg = PACKAGES[b.package];
+        if (!pkg) return json(env, { error: 'Unknown package' }, 400);
+        const coupon = clean(b.coupon, 20).toUpperCase();
+        const discount = COUPONS[coupon] || 0;
+        const total = pkg.price + (b.exterior ? EXTERIOR.price : 0) - discount;
+        const service = b.exterior ? `${pkg.name} + ${EXTERIOR.name}` : pkg.name;
+
+        const form = new URLSearchParams();
+        form.append('amount', String(Math.round(total * 100)));
+        form.append('currency', 'usd');
+        // Card (Apple Pay rides on card) + Link only — keeps Cash App, Klarna, Affirm etc. off the checkout
+        form.append('payment_method_types[]', 'card');
+        form.append('payment_method_types[]', 'link');
+        form.append('description', `Nitos Car Detailing — ${service}`);
+        form.append('metadata[source]', SOURCE);
+        form.append('metadata[service]', service);
+        if (coupon && discount) form.append('metadata[coupon]', coupon);
+        if (b.name) form.append('metadata[name]', clean(b.name, 120));
+        if (b.phone) form.append('metadata[phone]', clean(b.phone, 40));
+        if (b.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email)) form.append('receipt_email', clean(b.email, 160));
+
+        const res = await fetch('https://api.stripe.com/v1/payment_intents', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: form.toString()
+        });
+        const data = await res.json();
+        if (!res.ok) return json(env, { error: data?.error?.message || 'Stripe error' }, 502);
+        return json(env, { clientSecret: data.client_secret, amount: total });
+      }
+
+      /* ---------- Stripe webhook (server-to-server, signed with whsec_) ---------- */
+      if (path === '/api/stripe-webhook' && method === 'POST') {
+        if (!env.STRIPE_WEBHOOK_SECRET) return json(env, { error: 'Webhook secret not configured' }, 503);
+        const raw = await request.text(); // must be the exact raw body for the signature check
+        const ok = await verifyStripeSignature(raw, request.headers.get('Stripe-Signature'), env.STRIPE_WEBHOOK_SECRET);
+        if (!ok) return json(env, { error: 'Invalid signature' }, 400);
+
+        let event;
+        try { event = JSON.parse(raw); } catch { return json(env, { error: 'Bad JSON' }, 400); }
+        const obj = event?.data?.object || {};
+
+        // Ignore PaymentIntents created by other sites that share this Stripe account
+        const piSource = obj.object === 'payment_intent' ? obj.metadata?.source : null;
+        if (piSource && piSource !== SOURCE) return json(env, { received: true, ignored: 'other source' });
+
+        let piId = null;
+        let newStatus = null;
+        if (event.type === 'payment_intent.succeeded') { piId = obj.id; newStatus = 'Paid'; }
+        else if (event.type === 'payment_intent.payment_failed') { piId = obj.id; newStatus = 'Incomplete'; }
+        else if (event.type === 'charge.refunded') {
+          piId = obj.payment_intent;
+          newStatus = obj.amount_refunded >= obj.amount ? 'Refunded' : 'Partially Refunded';
+        }
+
+        let updated = 0;
+        if (piId && newStatus) {
+          // A failed attempt must never downgrade a booking that is already Paid (customer may retry and succeed)
+          const guard = newStatus === 'Incomplete' ? " AND payment_status <> 'Paid'" : '';
+          const apply = async () => {
+            const res = await env.DB.prepare(
+              `UPDATE bookings SET payment_status = ? WHERE payment_intent_id = ? AND source = ?${guard}`
+            ).bind(newStatus, piId, SOURCE).run();
+            return res.meta?.changes || 0;
+          };
+          updated = await apply();
+          console.log('stripe webhook', event.type, piId, newStatus, 'rows:', updated);
+
+          // Stripe usually fires payment_intent.succeeded a split second BEFORE the browser saves the booking.
+          // Answer Stripe right away, then retry in the background (Workers allow ~30s of waitUntil work).
+          if (updated === 0) {
+            ctx.waitUntil((async () => {
+              for (const delayMs of [3000, 8000, 15000]) {
+                await new Promise((r) => setTimeout(r, delayMs));
+                const n = await apply();
+                console.log('stripe webhook retry', event.type, piId, newStatus, `after ${delayMs}ms rows:`, n);
+                if (n > 0) return;
+              }
+              console.log('stripe webhook gave up: no booking with', piId);
+            })());
+          }
+        }
+        return json(env, { received: true, type: event.type, updated });
+      }
+
+      if (path === '' || path === '/') return json(env, { ok: true, service: 'nitos-rossmoor-detailing-worker' });
+      return json(env, { error: 'Not found' }, 404);
     } catch (err) {
-      return json({ error: err.message }, 500);
+      return json(env, { error: err?.message || 'Server error' }, 500);
     }
   }
 };

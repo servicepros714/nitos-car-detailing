@@ -1,9 +1,6 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
-import { useState } from 'react';
-import toast from 'react-hot-toast';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useBooking } from '../../lib/BookingContext.jsx';
-import { createBooking } from '../../lib/bookingDb.js';
 import './Booking.css';
 
 // Actual navigation order (what Back/Continue step through).
@@ -32,8 +29,7 @@ function isStepValid(pathname, booking) {
 export default function BookingLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { booking, update } = useBooking();
-  const [submitting, setSubmitting] = useState(false);
+  const { booking } = useBooking();
 
   const routeIndex = ROUTE_ORDER.indexOf(location.pathname);
   const crumbIndex = CRUMBS.findIndex((c) => c.paths.includes(location.pathname));
@@ -48,34 +44,9 @@ export default function BookingLayout() {
     }
   };
 
-  const handleContinue = async () => {
-    if (!valid || submitting) return;
-    if (!isLast) {
-      navigate(ROUTE_ORDER[routeIndex + 1]);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const serviceNames = booking.serviceIds.join(' + ');
-      const { id } = await createBooking({
-        date: booking.date,
-        time: booking.time,
-        service: serviceNames,
-        name: booking.name,
-        phone: booking.phone,
-        email: booking.email,
-        vehicle: booking.vehicle,
-        address: booking.address,
-        notes: booking.notes,
-        payment_status: 'Pay Later'
-      });
-      update({ bookingId: id });
-      navigate('/checkout');
-    } catch (err) {
-      toast.error('Something went wrong saving your booking. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
+  const handleContinue = () => {
+    if (!valid) return;
+    navigate(isLast ? '/checkout' : ROUTE_ORDER[routeIndex + 1]);
   };
 
   return (
@@ -101,11 +72,11 @@ export default function BookingLayout() {
           <button
             className="btn btn-primary"
             onClick={handleContinue}
-            disabled={!valid || submitting}
+            disabled={!valid}
             type="button"
           >
-            {submitting ? <Loader2 size={16} className="spin" /> : isLast ? 'Continue to Payment' : 'Continue'}
-            {!submitting && <ArrowRight size={16} />}
+            {isLast ? 'Continue to Payment' : 'Continue'}
+            <ArrowRight size={16} />
           </button>
         </div>
       </div>
