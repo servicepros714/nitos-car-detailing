@@ -9,7 +9,9 @@ const LEFT_LINKS = [
 ];
 const RIGHT_LINKS = [
   { label: 'Process', href: '/#process' },
-  { label: 'Contact', href: '/#contact' }
+  // The Service Area section has the location, hours, phone and map (the footer sits
+  // at the very bottom, so the page can't scroll to it).
+  { label: 'Contact', href: '/#area' }
 ];
 
 export default function Nav() {

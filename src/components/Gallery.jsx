@@ -11,6 +11,8 @@ const FLEET = [
   { src: '/images/sprinter-van.jpg', alt: 'Sprinter cargo van after an exterior wash' }
 ];
 
+// width/height reserve each photo's space before it loads, so in-page links
+// (/#area, /#faq ...) land in the right place instead of being pushed down.
 export default function Gallery() {
   return (
     <section className="gallery section" id="gallery">
@@ -22,7 +24,7 @@ export default function Gallery() {
           {TRANSFORMS.map((t) => (
             <figure className="transform-card" key={t.src}>
               <div className="transform-card__tag">Before / After</div>
-              <img src={t.src} alt={t.alt} loading="lazy" />
+              <img src={t.src} alt={t.alt} width="1082" height="1400" loading="lazy" />
             </figure>
           ))}
         </div>
@@ -30,7 +32,7 @@ export default function Gallery() {
         <div className="gallery__fleet">
           {FLEET.map((f) => (
             <figure className="fleet-card" key={f.src}>
-              <img src={f.src} alt={f.alt} loading="lazy" />
+              <img src={f.src} alt={f.alt} width="1600" height="739" loading="lazy" />
             </figure>
           ))}
         </div>

@@ -117,3 +117,6 @@ p.hero__title {
   .lp-hero .hero__actions .btn { flex: 1 1 100%; }
   .notfound { padding-top: 110px; }
 }
+
+/* In-page links (/#area, /#services ...): stop below the sticky menu bar */
+section[id] { scroll-margin-top: 84px; }
