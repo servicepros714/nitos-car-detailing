@@ -64,6 +64,25 @@
 }
 .spec-plate--featured .service-step__addon-label { color: var(--chrome-300); }
 
+/* Two packages: two centered columns on desktop */
 @media (min-width: 780px) {
-  .service-step__grid { grid-template-columns: repeat(3, 1fr); }
+  .service-step__grid {
+    grid-template-columns: repeat(2, minmax(0, 360px));
+    justify-content: center;
+  }
 }
+
+.service-step__eyebrow { text-align: center; margin-top: 10px; }
+
+/* A <button> centers its content; cards read top-down like the home page cards */
+.service-step__card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  text-align: left;
+}
+.service-step__card .spec-plate__name { padding-right: 36px; }
+
+/* The checkbox sits on the left so the "Most Complete" ribbon never covers it */
+.service-step__check { right: auto; left: 22px; top: 22px; }
+.service-step__card .spec-plate__name { margin-top: 30px; }

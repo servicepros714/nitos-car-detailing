@@ -13,7 +13,7 @@ export default function ServiceStep() {
 
   return (
     <div>
-      <p className="eyebrow">Step 1 of 4</p>
+      <p className="eyebrow service-step__eyebrow">Step 1 of 4</p>
       <h1 className="service-step__title">Choose your service</h1>
       <p className="service-step__subtitle">
         Pick your interior detail — you can add an exterior wash on the next screen.
@@ -28,7 +28,7 @@ export default function ServiceStep() {
               onClick={() => select(s.id)}
               className={`spec-plate service-step__card ${s.featured ? 'spec-plate--featured' : ''} ${selected ? 'service-step__card--selected' : ''}`}
             >
-              {s.featured && <span className="spec-plate__tag">Most Booked</span>}
+              {s.featured && <span className="spec-plate__tag">Most Complete</span>}
               <span className="service-step__check">
                 <span className="service-step__check-inner">
                   {selected && <Check size={12} color="#fff" />}
