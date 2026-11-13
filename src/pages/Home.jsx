@@ -7,6 +7,7 @@ import Process from '../components/Process.jsx';
 import CtaBanner from '../components/CtaBanner.jsx';
 import ServiceArea from '../components/ServiceArea.jsx';
 import Faq from '../components/Faq.jsx';
+import Reviews from '../components/Reviews.jsx';
 
 export default function Home() {
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function Home() {
       <div className="reveal"><Services /></div>
       <div className="reveal"><Gallery /></div>
       <div className="reveal"><Process /></div>
+      <Reviews />
       <ServiceArea />
       <Faq title="Mobile detailing questions, answered" />
       <div className="reveal"><CtaBanner /></div>

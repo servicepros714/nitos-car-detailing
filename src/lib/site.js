@@ -33,5 +33,12 @@ export const FAQS = [
 
 // Real customer reviews only, copied word for word from the Google Business Profile
 // (newest first, first name + last initial). Nothing shows while this list is empty.
+// Left out on purpose: reviews that describe a line, a discount offer, or coming in to a shop
+// (the site says mobile, and no such offer is advertised).
 // To add one: { name: 'Maria G.', text: '...' }, then commit and push.
-export const REVIEWS = [];
+export const REVIEWS = [
+  { name: 'Corey D.', text: 'Love this service. I never have second thoughts when my car is being worked on here.' },
+  { name: 'Esperanza G.', text: 'Car detailing is amazing!' },
+  { name: 'Ava J.', text: "I'm so glad I chose to let these guys detail my car because it looks and smells like brand new again. . I wish I would have known of them before now .. but they have my business from now on .." },
+  { name: 'Dwayne T.', text: 'Everything was cleaned thoroughly and every surface looks spotless. The car looks better than it has in years.' },
+];

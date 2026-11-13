@@ -22,7 +22,8 @@ function businessNode() {
     logo: abs('/images/logo.png'),
     // Cheapest bookable visit (Basic) to the most complete one (Premium + wash). Never the $50 add-on alone.
     priceRange: `$${basic.price}–$${premium.price + EXTERIOR.price}`,
-    address: { '@type': 'PostalAddress', addressLocality: HOME_CITY, addressRegion: 'CA', addressCountry: 'US' },
+    // Matches the Google Business Profile (Los Alamitos, CA). Rossmoor shares the 90720 ZIP.
+    address: { '@type': 'PostalAddress', addressLocality: 'Los Alamitos', addressRegion: 'CA', postalCode: '90720', addressCountry: 'US' },
     areaServed: [HOME_CITY, ...CITY_PAGES.map((c) => c.city)].map((name) => ({ '@type': 'City', name: `${name}, CA` })),
     openingHoursSpecification: [{
       '@type': 'OpeningHoursSpecification',
