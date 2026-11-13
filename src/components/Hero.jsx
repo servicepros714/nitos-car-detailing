@@ -2,9 +2,10 @@ import { Link } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import './Hero.css';
 
+// Confirmed facts only (no made-up counts or ratings).
 const STATS = [
-  { value: '500+', label: 'Vehicles Detailed' },
-  { value: '4.9', label: 'Average Rating' },
+  { value: '$150', label: 'Interior Details From' },
+  { value: '7 Days', label: '7 AM – 7 PM' },
   { value: 'Mobile', label: 'We Come To You' }
 ];
 
@@ -18,13 +19,13 @@ export default function Hero() {
   return (
     <section className="hero">
       <div className={`hero__content ${loaded ? 'hero__content--in' : ''}`}>
-        <p className="eyebrow">Rossmoor, CA &amp; Surrounding Areas</p>
-        <h1 className="hero__title">
+        <h1 className="eyebrow hero__kicker">Mobile car detailing in Rossmoor, CA</h1>
+        <p className="hero__title">
           Showroom finish,<br />brought to your driveway.
-        </h1>
+        </p>
         <p className="hero__sub">
-          Nitos Car Detailing Rossmoor delivers hand-finished interior and exterior
-          detailing at your home or office — booked online in minutes.
+          Nitos Car Detailing Rossmoor delivers hand-finished interior detailing, plus
+          an optional hand wash, at your home or office — booked online.
         </p>
         <div className="hero__actions">
           <Link to="/book" className="btn btn-primary">Book Your Detail</Link>

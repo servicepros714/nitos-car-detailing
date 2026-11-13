@@ -15,7 +15,7 @@ import {
 } from 'date-fns';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useBooking } from '../../lib/BookingContext.jsx';
-import { pacificToday } from '../../lib/bookingDb.js';
+import { pacificToday, noSlotsLeftToday } from '../../lib/bookingDb.js';
 import './DateStep.css';
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -67,7 +67,8 @@ export default function DateStep() {
           {days.map((d) => {
             const iso = format(d, 'yyyy-MM-dd');
             const inMonth = isSameMonth(d, visibleMonth);
-            const isPast = isBefore(d, today) && !isSameDay(d, today);
+            // Today closes once no slot is 4 hours away (after 3 PM).
+            const isPast = (isBefore(d, today) && !isSameDay(d, today)) || (isSameDay(d, today) && noSlotsLeftToday());
             const selected = booking.date === iso;
             const disabled = !inMonth || isPast;
 

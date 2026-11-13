@@ -2,13 +2,13 @@ import './Gallery.css';
 
 const TRANSFORMS = [
   { src: '/images/interior-before-after.jpg', alt: 'Cluttered SUV interior before, fully restored after' },
-  { src: '/images/camaro-before-after.jpg', alt: 'Camaro paint before and after correction and coating' },
+  { src: '/images/camaro-before-after.jpg', alt: 'Black Camaro exterior before and after a hand wash' },
   { src: '/images/camry-before-after.jpg', alt: 'Camry covered in pre-wash foam, then finished to a deep black shine' }
 ];
 
 const FLEET = [
   { src: '/images/truck-detail.jpg', alt: 'GMC truck finished with a mobile detail on location' },
-  { src: '/images/sprinter-van.jpg', alt: 'Sprinter cargo van after an exterior detail' }
+  { src: '/images/sprinter-van.jpg', alt: 'Sprinter cargo van after an exterior wash' }
 ];
 
 export default function Gallery() {

@@ -1,4 +1,7 @@
-import { Phone, MapPin, Clock } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Phone, MapPin, Clock, Star } from 'lucide-react';
+import { BUSINESS, HOURS, GOOGLE_PROFILE_URL } from '../lib/site.js';
+import { SERVICE_PAGES, CITY_PAGES, HOME_CITY } from '../lib/pages.js';
 import './Footer.css';
 
 export default function Footer() {
@@ -12,18 +15,24 @@ export default function Footer() {
         </div>
 
         <div className="footer__col">
-          <h4>Contact</h4>
-          <a href="tel:+15625392226"><Phone size={16} /> (562) 539-2226</a>
-          <span className="footer__line"><MapPin size={16} /> Rossmoor, CA</span>
-          <span className="footer__line"><Clock size={16} /> Mon–Sun: By Appointment</span>
+          <h3>Services</h3>
+          {SERVICE_PAGES.map((p) => <Link key={p.path} to={p.path}>{p.nav}</Link>)}
+          <a href="/#services">All prices</a>
         </div>
 
         <div className="footer__col">
-          <h4>Site</h4>
-          <a href="/#services">Services</a>
-          <a href="/#gallery">Gallery</a>
-          <a href="/#process">Process</a>
-          <a href="/book">Book Online</a>
+          <h3>Areas</h3>
+          <Link to="/">{HOME_CITY}</Link>
+          {CITY_PAGES.map((p) => <Link key={p.path} to={p.path}>{p.city}</Link>)}
+        </div>
+
+        <div className="footer__col">
+          <h3>Contact</h3>
+          <a href={BUSINESS.phoneHref}><Phone size={16} /> {BUSINESS.phone}</a>
+          <span className="footer__line"><MapPin size={16} /> Rossmoor, CA</span>
+          <span className="footer__line"><Clock size={16} /> {HOURS}</span>
+          <a href={GOOGLE_PROFILE_URL} target="_blank" rel="noopener noreferrer"><Star size={16} /> Find us on Google</a>
+          <Link to="/book">Book Online</Link>
         </div>
       </div>
       <div className="container footer__bottom">

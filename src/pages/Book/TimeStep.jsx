@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { useBooking } from '../../lib/BookingContext.jsx';
-import { fetchBookedSlots, generateTimeSlots } from '../../lib/bookingDb.js';
+import { fetchBookedSlots, availableSlots, pacificToday } from '../../lib/bookingDb.js';
 
 export default function TimeStep() {
   const { booking, update } = useBooking();
   const [booked, setBooked] = useState([]);
   const [loading, setLoading] = useState(true);
-  const allSlots = generateTimeSlots();
+  // Same-day bookings need 4 hours' notice: earlier slots today are not offered.
+  const allSlots = availableSlots(booking.date);
+  const isToday = booking.date === pacificToday();
 
   useEffect(() => {
     if (!booking.date) return;
@@ -27,8 +29,13 @@ export default function TimeStep() {
           {format(parseISO(booking.date), 'EEEE, MMMM d')} — Pacific Time
         </p>
       )}
+      {isToday && (
+        <p style={{ color: 'var(--steel-600)', marginBottom: 20 }}>Same-day bookings need at least 4 hours&rsquo; notice.</p>
+      )}
       {loading ? (
         <p>Checking availability…</p>
+      ) : allSlots.length === 0 ? (
+        <p>No same-day times left. Bookings need at least 4 hours&rsquo; notice, so please pick another day.</p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 10 }}>
           {allSlots.map((slot) => {

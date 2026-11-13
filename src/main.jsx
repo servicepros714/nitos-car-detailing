@@ -1,15 +1,20 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
 import App from './App.jsx';
 import './index.css';
+import './seo.css';
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+const root = document.getElementById('root');
+const app = (
   <React.StrictMode>
     <BrowserRouter>
-      <Toaster position="top-center" toastOptions={{ duration: 3500 }} />
       <App />
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// Marketing pages ship prerendered HTML (scripts/prerender.js): hydrate it.
+// Booking pages ship an empty root: render from scratch.
+if (root.hasChildNodes()) ReactDOM.hydrateRoot(root, app);
+else ReactDOM.createRoot(root).render(app);

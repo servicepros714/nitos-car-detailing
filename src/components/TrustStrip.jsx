@@ -1,11 +1,11 @@
-import { ShieldCheck, MapPin, Sparkles, Clock } from 'lucide-react';
+import { Droplets, MapPin, Sparkles, Clock } from 'lucide-react';
 import './TrustStrip.css';
 
 const ITEMS = [
   { icon: MapPin, label: 'We come to you in Rossmoor & nearby' },
-  { icon: ShieldCheck, label: 'Insured & background-checked techs' },
+  { icon: Droplets, label: 'Own water & power, nothing needed from you' },
   { icon: Sparkles, label: 'Hand-finished, no automated tunnels' },
-  { icon: Clock, label: 'Most details done in 90–120 minutes' }
+  { icon: Clock, label: 'Open 7 days, 7 AM – 7 PM' }
 ];
 
 export default function TrustStrip() {

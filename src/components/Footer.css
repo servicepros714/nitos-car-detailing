@@ -25,7 +25,7 @@
 }
 .footer__brand p { font-size: 13px; max-width: 32ch; }
 
-.footer__col h4 {
+.footer__col h3 {
   color: var(--chrome-100);
   font-size: 14px;
   margin-bottom: 14px;
@@ -47,5 +47,5 @@
 }
 
 @media (min-width: 780px) {
-  .footer__inner { grid-template-columns: 1.4fr 1fr 1fr; }
+  .footer__inner { grid-template-columns: 1.3fr 1fr 1fr 1fr; }
 }

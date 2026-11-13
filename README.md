@@ -85,7 +85,23 @@ npm run build
 npx wrangler pages deploy dist --project-name=nitos-car-detailing-v2 --branch=main
 ```
 
-`.github/workflows/deploy.yml` does the same on every push to `main` once the repo has the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` Actions secrets. `public/_redirects` handles SPA routes (`/book`, `/checkout`, `/confirmation`).
+`.github/workflows/deploy.yml` does the same on every push to `main` once the repo has the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` Actions secrets. There is no `public/_redirects`: every page is a real HTML file (see SEO below), and unknown URLs get `dist/404.html` with a 404 status.
+
+## SEO
+
+- `npm run build` = `vite build` + an SSR build of `src/entry-server.jsx` + `scripts/prerender.js`.
+  The prerender writes one static HTML file per route (home, landing pages, `/404`; the booking
+  pages get head tags only), writes `sitemap.xml`, and **fails the build** if a title is over
+  60 characters, a description over 160, or two pages share a title.
+- `src/lib/seo.js`: titles, descriptions, canonical (non-www), Open Graph and JSON-LD schema
+  (AutomotiveBusiness, FAQ, Service, breadcrumbs). `<Seo />` swaps them on client navigation.
+- `src/lib/pages.js`: the service and city landing pages (data). `src/pages/Landing.jsx` renders them.
+  Only confirmed facts go in there. The Exterior Wash is an add-on, never sold alone.
+- `src/lib/site.js`: business facts, hours, `SITE_URL`, Google profile links, `FAQS` (home FAQ + schema)
+  and `REVIEWS` (real Google reviews only; empty for now).
+- `public/robots.txt` points to the sitemap; `public/_headers` keeps `*.pages.dev` out of search.
+- Booking hours are 7:00 AM – 7:00 PM every 30 minutes (`src/lib/bookingDb.js` + `VALID_TIMES` in the
+  worker). Same-day bookings need 4 hours' notice; the worker refuses pay-later bookings inside the window.
 
 ## Booking flow
 

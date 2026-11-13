@@ -1,4 +1,5 @@
 import { Routes, Route, useLocation } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import Nav from './components/Nav.jsx';
 import Footer from './components/Footer.jsx';
 import MobileActionBar from './components/MobileActionBar.jsx';
@@ -12,6 +13,10 @@ import InfoStep from './pages/Book/InfoStep.jsx';
 import Checkout from './pages/Checkout.jsx';
 import Confirmation from './pages/Confirmation.jsx';
 import { BookingProvider } from './lib/BookingContext.jsx';
+import Landing from './pages/Landing.jsx';
+import NotFound from './pages/NotFound.jsx';
+import Seo from './components/Seo.jsx';
+import { LANDING_PAGES } from './lib/pages.js';
 
 export default function App() {
   const location = useLocation();
@@ -21,10 +26,15 @@ export default function App() {
 
   return (
     <BookingProvider>
+      <Seo />
+      <Toaster position="top-center" toastOptions={{ duration: 3500 }} />
       <Nav />
       <main>
         <Routes>
           <Route path="/" element={<Home />} />
+          {LANDING_PAGES.map((p) => (
+            <Route key={p.path} path={p.path} element={<Landing key={p.path} page={p} />} />
+          ))}
           <Route path="/book" element={<BookingLayout />}>
             <Route index element={<ServiceStep />} />
             <Route path="addon" element={<ExteriorWashStep />} />
@@ -34,6 +44,7 @@ export default function App() {
           </Route>
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/confirmation" element={<Confirmation />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
       <Footer />
